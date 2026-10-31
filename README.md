@@ -8,13 +8,12 @@ answers out loud in a realistic voice. Most of it is free and works without any 
 ## Contents
 
 1. [Quick start](#quick-start)
-2. [Everything Jarvis can do](#everything-jarvis-can-do)
-3. [Talking with Jarvis: getting an AI key](#talking-with-jarvis-getting-an-ai-key)
-4. [Changing Jarvis's voice](#changing-jarviss-voice)
-5. [All settings (keys.txt)](#all-settings-keystxt)
-6. [Troubleshooting](#troubleshooting)
-7. [Privacy: what leaves your Mac](#privacy-what-leaves-your-mac)
-8. [Ideas you could add](#ideas-you-could-add)
+2. [Talking with Jarvis: getting an AI key](#talking-with-jarvis-getting-an-ai-key)
+3. [Changing Jarvis's voice](#changing-jarviss-voice)
+4. [All settings (keys.txt)](#all-settings-keystxt)
+5. [Troubleshooting](#troubleshooting)
+6. [Privacy: what leaves your Mac](#privacy-what-leaves-your-mac)
+7. [Ideas you could add](#ideas-you-could-add)
 
 ---
 
@@ -38,66 +37,6 @@ closes any old copy automatically.
 The top-right label shows his voice and version (for example `online · ryan · v31`).
 
 ---
-
-## Everything Jarvis can do
-
-Say these out loud or type them. Phrases marked **hey Jarvis** need those words in front
-(so he doesn't act on normal conversation). Close wording works too, and misheard names
-like "hey Travis" or "open clod" are understood.
-
-### Everyday
-
-| Say | What happens |
-|---|---|
-| **what's the weather** | Current conditions, temperature, and today's high and low |
-| **good morning** | *"Good morning. The weather is … and the temperature is …"* |
-| **jarvis what's the news** | The top 5 current Fox News stories |
-| **hey jarvis what's going on with my NFL team** | Your team's record, standing, next game and headlines (ESPN) |
-| **goodbye** | Jarvis says goodbye and stops listening |
-
-### Apps, web and calls (Mac)
-
-| Say | What happens |
-|---|---|
-| **hey jarvis open** *app* | Opens any app in your Applications folder (e.g. "open Spotify") |
-| **hey jarvis open claude** | Opens the Claude desktop app |
-| **hey jarvis open hub** | Opens your GitHub repositories in Chrome (set `GITHUB_USER`) |
-| **hey jarvis search for** *anything* | Reads a short answer (DuckDuckGo/Wikipedia) and opens the results in Chrome. Also: **google …**, **look up …**, **find out …** |
-| **hey jarvis call** *contact or number* | Calls through your iPhone; your Mac shows a **Call** button to confirm |
-
-**Calls need:** iPhone and Mac on the same Apple ID, and on the iPhone *Settings → Phone →
-Calls on Other Devices* turned on for your Mac. The first time, allow Terminal to see your
-Contacts (*System Settings → Privacy & Security → Contacts*).
-
-Opening an app stops any music that's playing.
-
-### Money and markets
-
-| Say | What happens |
-|---|---|
-| **how's the stock market** | S&P 500, Dow and Nasdaq with today's change |
-| **what's Apple stock at** / **what's the price of Bitcoin** | Live price and today's change (any company by name) |
-| **what's Goldman Sachs saying about the markets** | Top headlines from Goldman Sachs's Markets insights; opens the page |
-
-Prices come from Yahoo Finance's public data (Stooq as a backup). Not financial advice.
-
-### Earth and space
-
-| Say | What happens |
-|---|---|
-| **hey jarvis pull up earth** / **close earth** | Shows or hides the 3D Earth |
-| **hey jarvis show me** / **take me to** / **zoom in on** / **where is** *place or address* | Flies there, e.g. "take me to 1600 Pennsylvania Avenue" |
-| **hey jarvis zoom in** / **zoom out** / **show me the whole earth** | Moves the Earth view |
-| **hey jarvis open space** / **close space** | Shows or hides Solar System Scope. Click a planet and scroll to zoom in on it (Jarvis can't steer this one; it's another website) |
-
-### Music and show-off
-
-| Say | What happens |
-|---|---|
-| **jarvis music** | Plays `music.mp3`; say it again to stop. The orb dances to it |
-| **jarvis demo** | Jarvis gives his showcase speech and plays the music partway through |
-
-To use a different song, replace `music.mp3` in this folder with any MP3 of the same name.
 
 ### The orb
 
@@ -179,6 +118,7 @@ Each setting goes on its own line as `NAME=value`. Lines starting with `#` are n
 Save and restart Jarvis after any change.
 
 | Setting | What it does | Default |
+add as you please. these are the defaults.
 |---|---|---|
 | `ANTHROPIC_API_KEY` | Claude key: lets you talk with Jarvis | empty |
 | `GROQ_API_KEY` | Groq key: lets you talk with Jarvis | empty |
@@ -193,8 +133,8 @@ Save and restart Jarvis after any change.
 | `FISH_VOICE_ID` | Which Fish Audio voice | `612b878b113047d9a770c069c8b4fdfe` |
 | `JARVIS_NAME` | Your name, used in "Good morning, …" and by the AI | none |
 | `WEATHER_PLACE` | Town name Jarvis says in the weather | `Greencastle` |
-| `WEATHER_LAT` / `WEATHER_LON` | Your location for the weather (find yours at <https://www.latlong.net>) | Greencastle, PA |
-| `NFL_TEAM` | Your team as ESPN's short code (`pit`, `kc`, `phi`, `dal`…) | `cin` (Bengals) |
+| `WEATHER_LAT` / `WEATHER_LON` | Your location for the weather (find yours at <https://www.latlong.net>) | 
+| `NFL_TEAM` | Your team as ESPN's short code (`pit`, `kc`, `phi`, `dal`…) | `cin` (anyteam) |
 | `GITHUB_USER` | Your GitHub username for "open hub" | empty |
 
 ---
@@ -240,10 +180,3 @@ Save and restart Jarvis after any change.
 - Turning Jarvis into a normal Mac app you can double-click and share
 
 ---
-
-### Other ways to run Jarvis
-
-- **Jarvis Live** (separate download): only the orb and the voice. Type or speak a line and
-  Jarvis says it. No AI, no keys, no commands. Made for streaming.
-- **Terminal version:** `python3 assistant.py` runs Jarvis without the website: it listens and
-  answers through Terminal, without the orb or commands. It needs an AI key or Ollama to reply.
