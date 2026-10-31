@@ -154,9 +154,7 @@ add as you please. these are the defaults.
 - **Goes to your AI service:** your questions, only if you added an AI key.
 - **Goes to Fish Audio:** Jarvis's sentences, only if you added a Fish Audio key.
 - **Looked up online when you ask:** weather (Open-Meteo), news (Fox News), sports (ESPN),
-  prices (Yahoo Finance/Stooq), Goldman Sachs insights, search (DuckDuckGo/Wikipedia),
-  places on the Earth (OpenStreetMap).
-
+- ** this ai is localy hosted
 ---
 
 ## Ideas you could add
