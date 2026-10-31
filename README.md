@@ -1,8 +1,6 @@
-# Jarvis
+# Jarvis for mac
 
-A voice assistant for your Mac with a glowing particle orb. Talk to him (or type), and he
-answers out loud in a realistic voice. Most of it is free and works without any account.
-
+welcome to JARVIS! the tony stark inspired ai that can do anything you program it to do.
 ---
 
 ## Contents
@@ -17,7 +15,7 @@ answers out loud in a realistic voice. Most of it is free and works without any 
 
 ---
 
-## Quick start
+## Quick start/ how to set up. do exactly in this order
 
 1. **Install Python 3.12** from <https://www.python.org/downloads/macos/> (3.10 and 3.11 also
    work; the newest Pythons don't yet). After installing, open **Applications → Python 3.12**
@@ -25,6 +23,7 @@ answers out loud in a realistic voice. Most of it is free and works without any 
 2. **Double-click `Start Jarvis.command`** in this folder. The first time:
    - macOS may say it can't verify the developer: right-click the file, choose **Open**, then
      **Open** again.
+     "this is found in the unzipped zip file"
    - It installs what Jarvis needs and downloads his voice (about 120 MB). This takes a few minutes.
 3. **Jarvis opens in your browser** at <http://localhost:8765>. Use **Google Chrome** for the best
    speech recognition.
@@ -36,15 +35,7 @@ closes any old copy automatically.
 
 The top-right label shows his voice and version (for example `online · ryan · v31`).
 
----
-
-### The orb
-
-The orb changes shape with what Jarvis is doing: a **star cloud** while listening, a
-**globe with a bright core** while thinking, and **circular orbits** that ripple with his
-voice while he speaks.
-
----
+-----
 
 ## Talking with Jarvis: getting an AI key
 
@@ -132,7 +123,7 @@ add as you please. these are the defaults.
 | `FISH_API_KEY` | Fish Audio key for a custom voice | empty |
 | `FISH_VOICE_ID` | Which Fish Audio voice | `612b878b113047d9a770c069c8b4fdfe` |
 | `JARVIS_NAME` | Your name, used in "Good morning, …" and by the AI | none |
-| `WEATHER_PLACE` | Town name Jarvis says in the weather | `Greencastle` |
+| `WEATHER_PLACE` | Town name Jarvis says in the weather | `anyloco` |
 | `WEATHER_LAT` / `WEATHER_LON` | Your location for the weather (find yours at <https://www.latlong.net>) | 
 | `NFL_TEAM` | Your team as ESPN's short code (`pit`, `kc`, `phi`, `dal`…) | `cin` (anyteam) |
 | `GITHUB_USER` | Your GitHub username for "open hub" | empty |
