@@ -1,0 +1,249 @@
+# Jarvis
+
+A voice assistant for your Mac with a glowing particle orb. Talk to him (or type), and he
+answers out loud in a realistic voice. Most of it is free and works without any account.
+
+---
+
+## Contents
+
+1. [Quick start](#quick-start)
+2. [Everything Jarvis can do](#everything-jarvis-can-do)
+3. [Talking with Jarvis: getting an AI key](#talking-with-jarvis-getting-an-ai-key)
+4. [Changing Jarvis's voice](#changing-jarviss-voice)
+5. [All settings (keys.txt)](#all-settings-keystxt)
+6. [Troubleshooting](#troubleshooting)
+7. [Privacy: what leaves your Mac](#privacy-what-leaves-your-mac)
+8. [Ideas you could add](#ideas-you-could-add)
+
+---
+
+## Quick start
+
+1. **Install Python 3.12** from <https://www.python.org/downloads/macos/> (3.10 and 3.11 also
+   work; the newest Pythons don't yet). After installing, open **Applications → Python 3.12**
+   and double-click **Install Certificates.command**.
+2. **Double-click `Start Jarvis.command`** in this folder. The first time:
+   - macOS may say it can't verify the developer: right-click the file, choose **Open**, then
+     **Open** again.
+   - It installs what Jarvis needs and downloads his voice (about 120 MB). This takes a few minutes.
+3. **Jarvis opens in your browser** at <http://localhost:8765>. Use **Google Chrome** for the best
+   speech recognition.
+4. Click **Start Jarvis** and choose **Allow** for the microphone. He says *"Hello, I'm Jarvis."*
+5. **Talk to him**, or type in the box at the bottom left and press Enter.
+
+**To stop Jarvis**, close the small Terminal window that opened with him. Starting him again
+closes any old copy automatically.
+
+The top-right label shows his voice and version (for example `online · ryan · v31`).
+
+---
+
+## Everything Jarvis can do
+
+Say these out loud or type them. Phrases marked **hey Jarvis** need those words in front
+(so he doesn't act on normal conversation). Close wording works too, and misheard names
+like "hey Travis" or "open clod" are understood.
+
+### Everyday
+
+| Say | What happens |
+|---|---|
+| **what's the weather** | Current conditions, temperature, and today's high and low |
+| **good morning** | *"Good morning. The weather is … and the temperature is …"* |
+| **jarvis what's the news** | The top 5 current Fox News stories |
+| **hey jarvis what's going on with my NFL team** | Your team's record, standing, next game and headlines (ESPN) |
+| **goodbye** | Jarvis says goodbye and stops listening |
+
+### Apps, web and calls (Mac)
+
+| Say | What happens |
+|---|---|
+| **hey jarvis open** *app* | Opens any app in your Applications folder (e.g. "open Spotify") |
+| **hey jarvis open claude** | Opens the Claude desktop app |
+| **hey jarvis open hub** | Opens your GitHub repositories in Chrome (set `GITHUB_USER`) |
+| **hey jarvis search for** *anything* | Reads a short answer (DuckDuckGo/Wikipedia) and opens the results in Chrome. Also: **google …**, **look up …**, **find out …** |
+| **hey jarvis call** *contact or number* | Calls through your iPhone; your Mac shows a **Call** button to confirm |
+
+**Calls need:** iPhone and Mac on the same Apple ID, and on the iPhone *Settings → Phone →
+Calls on Other Devices* turned on for your Mac. The first time, allow Terminal to see your
+Contacts (*System Settings → Privacy & Security → Contacts*).
+
+Opening an app stops any music that's playing.
+
+### Money and markets
+
+| Say | What happens |
+|---|---|
+| **how's the stock market** | S&P 500, Dow and Nasdaq with today's change |
+| **what's Apple stock at** / **what's the price of Bitcoin** | Live price and today's change (any company by name) |
+| **what's Goldman Sachs saying about the markets** | Top headlines from Goldman Sachs's Markets insights; opens the page |
+
+Prices come from Yahoo Finance's public data (Stooq as a backup). Not financial advice.
+
+### Earth and space
+
+| Say | What happens |
+|---|---|
+| **hey jarvis pull up earth** / **close earth** | Shows or hides the 3D Earth |
+| **hey jarvis show me** / **take me to** / **zoom in on** / **where is** *place or address* | Flies there, e.g. "take me to 1600 Pennsylvania Avenue" |
+| **hey jarvis zoom in** / **zoom out** / **show me the whole earth** | Moves the Earth view |
+| **hey jarvis open space** / **close space** | Shows or hides Solar System Scope. Click a planet and scroll to zoom in on it (Jarvis can't steer this one; it's another website) |
+
+### Music and show-off
+
+| Say | What happens |
+|---|---|
+| **jarvis music** | Plays `music.mp3`; say it again to stop. The orb dances to it |
+| **jarvis demo** | Jarvis gives his showcase speech and plays the music partway through |
+
+To use a different song, replace `music.mp3` in this folder with any MP3 of the same name.
+
+### The orb
+
+The orb changes shape with what Jarvis is doing: a **star cloud** while listening, a
+**globe with a bright core** while thinking, and **circular orbits** that ripple with his
+voice while he speaks.
+
+---
+
+## Talking with Jarvis: getting an AI key
+
+**Without a key, Jarvis only does the commands above.** Anything else gets
+*"That's not one of my commands."*
+
+**With a key, you can talk to him about anything**, and he still does all his commands.
+You need only **one** key. If you add more than one, he uses the first in this order:
+Claude, Groq, Gemini.
+
+| Service | Cost | Where to get a key | Notes |
+|---|---|---|---|
+| **Claude** (Anthropic) | Paid, pay as you go | <https://console.anthropic.com> → **API Keys** → **Create Key** | Add some credit first. Uses Claude Opus 5.5; for cheaper, faster replies set `CLAUDE_MODEL=claude-haiku-5-5` |
+| **Groq** | Free plan | <https://console.groq.com/keys> → **Create API Key** | Very fast. Some networks and countries are blocked by Groq |
+| **Gemini** (Google) | Free plan | <https://aistudio.google.com/apikey> → **Create API key** | Needs a Google account that passes Google's age check |
+
+**To add the key:**
+
+1. Open `keys.txt` in this folder (it opens in TextEdit).
+2. Paste the key right after the matching `=` sign, with no spaces. For example:
+   ```
+   GROQ_API_KEY=gsk_yourkeyhere
+   ```
+3. Save (**File → Save**) and restart Jarvis. The Terminal window should say `Talking: on`.
+
+**Keep your keys private.** Never paste them into a chat, an email or a screenshot. If one
+leaks, delete it on the service's website and make a new one.
+
+**Free and offline alternative:** install the free **Ollama** app from <https://ollama.com>,
+open it, and put `AI_ANSWERS=on` in `keys.txt`. Jarvis downloads a small AI model (about 2 GB)
+the first time. Answers are simpler than the online services, but there's no key, no
+account and no internet needed.
+
+---
+
+## Changing Jarvis's voice
+
+### Free voices (Piper, run on your Mac)
+
+Put one of these in `keys.txt`, save, and restart. A new voice downloads once (60–120 MB).
+
+| Setting | Voice |
+|---|---|
+| `PIPER_VOICE=en_US-ryan-high` | Ryan, American man (default) |
+| `PIPER_VOICE=en_GB-alan-medium` | Alan, British man (most "Jarvis") |
+| `PIPER_VOICE=en_GB-northern_english_male-medium` | Northern English man |
+| `PIPER_VOICE=en_US-joe-medium` | Joe, American man |
+| `PIPER_VOICE=en_US-lessac-high` | American woman |
+| `PIPER_VOICE=en_GB-cori-high` | British woman |
+
+Listen to all of them at <https://rhasspy.github.io/piper-samples/>. Any voice name from
+that page works.
+
+### Your own voice from Fish Audio (paid)
+
+1. Make or pick a voice at <https://fish.audio> and copy its **voice ID** (the long code).
+2. Create an API key in your Fish Audio account's API section, and add credit if needed.
+3. In `keys.txt`:
+   ```
+   FISH_API_KEY=your-key
+   FISH_VOICE_ID=your-voice-id
+   ```
+4. Restart. The top-right label shows **fish audio**. If Fish Audio fails (no credit, no
+   internet), Jarvis says that sentence in the Piper voice instead and the Terminal says why.
+
+---
+
+## All settings (keys.txt)
+
+Each setting goes on its own line as `NAME=value`. Lines starting with `#` are notes.
+Save and restart Jarvis after any change.
+
+| Setting | What it does | Default |
+|---|---|---|
+| `ANTHROPIC_API_KEY` | Claude key: lets you talk with Jarvis | empty |
+| `GROQ_API_KEY` | Groq key: lets you talk with Jarvis | empty |
+| `GEMINI_API_KEY` | Gemini key: lets you talk with Jarvis | empty |
+| `AI_ANSWERS` | `on` / `off` to force talking on or off (`on` with no key uses Ollama) | on with a key, otherwise off |
+| `CLAUDE_MODEL` | Which Claude model | `claude-opus-5-5` |
+| `GROQ_MODEL` | Which Groq model | `llama-3.3-70b-versatile` |
+| `GEMINI_MODEL` | Which Gemini model | `gemini-flash-latest` |
+| `OLLAMA_MODEL` | Which Ollama model (e.g. `qwen2.5:7b` if you have 16 GB+ memory) | `llama3.2` |
+| `PIPER_VOICE` | Free voice (see above) | `en_US-ryan-high` |
+| `FISH_API_KEY` | Fish Audio key for a custom voice | empty |
+| `FISH_VOICE_ID` | Which Fish Audio voice | `612b878b113047d9a770c069c8b4fdfe` |
+| `JARVIS_NAME` | Your name, used in "Good morning, …" and by the AI | none |
+| `WEATHER_PLACE` | Town name Jarvis says in the weather | `Greencastle` |
+| `WEATHER_LAT` / `WEATHER_LON` | Your location for the weather (find yours at <https://www.latlong.net>) | Greencastle, PA |
+| `NFL_TEAM` | Your team as ESPN's short code (`pit`, `kc`, `phi`, `dal`…) | `cin` (Bengals) |
+| `GITHUB_USER` | Your GitHub username for "open hub" | empty |
+
+---
+
+## Troubleshooting
+
+| Problem | Fix |
+|---|---|
+| `ResolutionImpossible` when installing | Use Python 3.12 (see Quick start), and start with `Start Jarvis.command` |
+| `CERTIFICATE_VERIFY_FAILED` | Double-click **Install Certificates.command** in Applications → Python 3.12 |
+| Jarvis doesn't hear you | Use Chrome; click the microphone icon in the address bar and choose **Allow** |
+| Screen says "speaking" but no sound | Check the Mac's volume; right-click the tab and make sure it isn't muted |
+| "That's not one of my commands" for everything | That's normal without an AI key: see [Talking with Jarvis](#talking-with-jarvis-getting-an-ai-key) |
+| Key added but `Talking: off` | Make sure the key is right after the `=` with no spaces, the file is saved, and you restarted |
+| `403 / error code 1010` | Groq is blocking your connection: try Claude or Gemini instead |
+| Voice is Ryan, not your Fish Audio voice | Look in the Terminal for a line starting `[Fish Audio failed` for the reason |
+| "Jarvis was opened in another tab" | Only one Jarvis tab works at a time; close the extra tabs |
+| Running an old copy by mistake | The Terminal and top-right label show the version and folder; delete old `voice_assistant` folders |
+
+---
+
+## Privacy: what leaves your Mac
+
+- **Stays on your Mac:** the Piper voice, Ollama, your Contacts, opening apps.
+- **Goes to Google:** what you say, when the microphone is on (Chrome turns speech into text).
+- **Goes to your AI service:** your questions, only if you added an AI key.
+- **Goes to Fish Audio:** Jarvis's sentences, only if you added a Fish Audio key.
+- **Looked up online when you ask:** weather (Open-Meteo), news (Fox News), sports (ESPN),
+  prices (Yahoo Finance/Stooq), Goldman Sachs insights, search (DuckDuckGo/Wikipedia),
+  places on the Earth (OpenStreetMap).
+
+---
+
+## Ideas you could add
+
+- A "hey Jarvis" wake word, so he only listens after his name
+- Smart lights and plugs (Philips Hue, Apple Home)
+- Timers, alarms and reminders
+- Reading your calendar or emails
+- Spotify control (play, pause, next song)
+- Captions of what Jarvis says on screen
+- A different orb colour or style
+- Turning Jarvis into a normal Mac app you can double-click and share
+
+---
+
+### Other ways to run Jarvis
+
+- **Jarvis Live** (separate download): only the orb and the voice. Type or speak a line and
+  Jarvis says it. No AI, no keys, no commands. Made for streaming.
+- **Terminal version:** `python3 assistant.py` runs Jarvis without the website: it listens and
+  answers through Terminal, without the orb or commands. It needs an AI key or Ollama to reply.
