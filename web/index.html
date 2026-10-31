@@ -1,0 +1,957 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jarvis</title>
+<style>
+  /* Layout: one full-screen canvas (the particle ball) with a few quiet monospace labels on top. */
+  :root {
+    --bg-top: #05080e;
+    --bg-bottom: #0a0f19;
+    --text: #d7dee6;
+    --muted: #6b7682;
+    --accent: #5fcfff;
+    --ok: #46d278;
+    --warn: #f0b45a;
+    --panel: rgba(14, 18, 24, 0.85);
+    --line: #2d343c;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    color-scheme: dark;
+  }
+  html, body { height: 100%; margin: 0; }
+  [hidden] { display: none !important; }
+  body {
+    background: radial-gradient(ellipse at 50% 46%, #0b1420 0%, transparent 60%),
+                linear-gradient(var(--bg-top), var(--bg-bottom));
+    color: var(--text);
+    font-family: var(--mono);
+    overflow: hidden;
+  }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  .earth { position: fixed; inset: 0; width: 100%; height: 100%; border: 0; z-index: 2; background: #000; }
+  .conn, .status, .msg, .query, .type, .start { z-index: 3; }
+  /* with the Earth showing, keep clear of its own controls (top right, bottom right) */
+  body.earth-open .conn { display: none; }
+  body.earth-open .query { right: auto; left: 26px; bottom: 70px; }
+  body.earth-open .status { color: #cfe0f5; text-shadow: 0 0 6px #000; }
+  .conn {
+    position: fixed; top: 22px; right: 26px;
+    display: flex; align-items: center; gap: 8px;
+    font-size: 13px; color: var(--muted); letter-spacing: 0.04em;
+  }
+  .conn i { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+  .conn.on i { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+  .conn.off i { background: #e0605a; }
+  .status {
+    position: fixed; left: 50%; bottom: 72px; transform: translateX(-50%);
+    font-size: 15px; color: var(--muted); letter-spacing: 0.08em; white-space: nowrap;
+  }
+  .msg {
+    position: fixed; left: 50%; bottom: 104px; transform: translateX(-50%);
+    width: min(560px, calc(100% - 32px)); text-align: center;
+    font-size: 13px; line-height: 1.5; color: var(--warn);
+    white-space: pre-line;
+  }
+  .query {
+    position: fixed; right: 26px; bottom: 26px; max-width: min(520px, calc(100% - 52px));
+    background: var(--panel); border: 1px solid var(--line);
+    padding: 10px 14px; font-size: 13px; line-height: 1.45; color: var(--text);
+  }
+  .type {
+    position: fixed; left: 26px; bottom: 26px; width: min(260px, calc(100% - 52px));
+    background: transparent; border: 0; border-bottom: 1px solid var(--line);
+    color: var(--text); font: 13px var(--mono); padding: 6px 2px; outline: none;
+  }
+  .type::placeholder { color: #47505a; }
+  .type:focus { border-bottom-color: var(--accent); }
+  .start {
+    position: fixed; left: 50%; bottom: 120px; transform: translateX(-50%);
+    display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center;
+  }
+  .start button {
+    font: 600 15px var(--mono); letter-spacing: 0.12em; text-transform: uppercase;
+    color: #041018; background: var(--accent); border: 0; padding: 14px 30px; cursor: pointer;
+    box-shadow: 0 0 30px rgba(95, 207, 255, 0.35);
+  }
+  .start button:hover { filter: brightness(1.1); }
+  .start button:focus-visible { outline: 2px solid #fff; outline-offset: 4px; }
+  .start small { font-size: 12px; color: var(--muted); }
+  @media (max-width: 600px) {
+    .query { left: 16px; right: 16px; bottom: 70px; max-width: none; }
+    .type { left: 16px; bottom: 20px; width: calc(100% - 32px); }
+    .status { bottom: 140px; }
+    .msg { bottom: 170px; }
+  }
+</style>
+</head>
+<body>
+<canvas id="ball" aria-hidden="true"></canvas>
+<iframe class="earth" id="earth" title="Earth" hidden></iframe>
+<iframe class="earth" id="space" title="Solar system" hidden></iframe>
+
+<div class="conn" id="conn"><i></i><span id="connText">connecting</span></div>
+<div class="msg" id="msg" role="alert" hidden></div>
+<div class="status" id="status" aria-live="polite"></div>
+<div class="query" id="query" hidden></div>
+<input class="type" id="type" type="text" placeholder="or type here and press Enter" autocomplete="off" hidden>
+
+<div class="start" id="start">
+  <button id="startBtn" type="button">Start Jarvis</button>
+  <small>Uses your microphone · best in Chrome</small>
+</div>
+
+<script>
+"use strict";
+
+/* ===================== Particle ball ===================== */
+// The swarm moves between three shapes: a nebula (listening), a wireframe globe
+// with a bright core (thinking) and tangled flowing filaments (speaking).
+
+const canvas = document.getElementById("ball");
+const ctx = canvas.getContext("2d");
+const N = 3000;
+const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+function gauss() {
+  let u = 0, v = 0;
+  while (!u) u = Math.random();
+  while (!v) v = Math.random();
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+}
+function unit() {
+  const x = gauss(), y = gauss(), z = gauss(), n = Math.hypot(x, y, z) || 1;
+  return [x / n, y / n, z / n];
+}
+function pick(weights) {
+  let r = Math.random() * weights.reduce((a, b) => a + b, 0);
+  for (let i = 0; i < weights.length; i++) { if ((r -= weights[i]) < 0) return i; }
+  return weights.length - 1;
+}
+
+// Nebula: dense core, starburst rays, wide dust.
+const CLOUD = new Float32Array(N * 3), cloudKind = new Uint8Array(N);
+const cloudRays = Array.from({ length: 45 }, unit);
+// Globe: shell, rays from the core to the shell, bright core, a little loose interior.
+const SPH = new Float32Array(N * 3), sphKind = new Uint8Array(N), sphRay = new Int16Array(N);
+const sphRays = Array.from({ length: 70 }, unit);
+// Speaking: smooth circular orbits around the centre. Each ring has its own tilt,
+// size and speed, drifts slowly, and ripples with Jarvis's voice.
+const NC = 24;
+const RING_U = [], RING_V = [], RING_R = [], RING_SPEED = [], RING_DRIFT = [], RING_PH = [];
+for (let c = 0; c < NC; c++) {
+  const n = unit();                                // the ring's axis
+  const a = Math.abs(n[1]) < 0.9 ? [0, 1, 0] : [1, 0, 0];
+  let u = [n[1] * a[2] - n[2] * a[1], n[2] * a[0] - n[0] * a[2], n[0] * a[1] - n[1] * a[0]];
+  const ul = Math.hypot(...u); u = u.map((v) => v / ul);
+  const v = [n[1] * u[2] - n[2] * u[1], n[2] * u[0] - n[0] * u[2], n[0] * u[1] - n[1] * u[0]];
+  RING_U.push(u); RING_V.push(v);
+  RING_R.push(0.72 + Math.random() * 0.26);
+  RING_SPEED.push((0.35 + Math.random() * 0.5) * (Math.random() < 0.5 ? -1 : 1));
+  RING_DRIFT.push(-0.25 + Math.random() * 0.5);
+  RING_PH.push(Math.random() * Math.PI * 2);
+}
+const F_CURVE = new Uint8Array(N), F_U = new Float32Array(N), F_JIT = new Float32Array(N * 3), spray = new Uint8Array(N);
+
+const DELAY = new Float32Array(N), BRI = new Float32Array(N), COL = new Uint8Array(N);
+const WOB_F = new Float32Array(N * 3), WOB_P = new Float32Array(N * 3);
+const COLORS = ["90,205,255", "120,225,255", "200,240,255", "60,160,220"];
+
+for (let i = 0; i < N; i++) {
+  const o = i * 3;
+  const k = pick([0.33, 0.17, 0.5]); cloudKind[i] = k;
+  if (k === 0) { CLOUD[o] = gauss() * 0.24; CLOUD[o + 1] = gauss() * 0.18; CLOUD[o + 2] = gauss() * 0.2; }
+  else if (k === 1) {
+    const d = cloudRays[Math.floor(Math.random() * cloudRays.length)], r = Math.pow(Math.random(), 1.8) * 0.75;
+    CLOUD[o] = d[0] * r; CLOUD[o + 1] = d[1] * r; CLOUD[o + 2] = d[2] * r;
+  } else { CLOUD[o] = gauss() * 0.84; CLOUD[o + 1] = gauss() * 0.6; CLOUD[o + 2] = gauss() * 0.6; }
+
+  const s = pick([0.70, 0.16, 0.07, 0.07]); sphKind[i] = s;
+  if (s === 0) { const d = unit(), r = 1 + gauss() * 0.012; SPH[o] = d[0] * r; SPH[o + 1] = d[1] * r; SPH[o + 2] = d[2] * r; }
+  else if (s === 1) {
+    const ri = Math.floor(Math.random() * sphRays.length), d = sphRays[ri], r = Math.pow(Math.random(), 0.8);
+    sphRay[i] = ri; SPH[o] = d[0] * r; SPH[o + 1] = d[1] * r; SPH[o + 2] = d[2] * r;
+  } else if (s === 2) { SPH[o] = gauss() * 0.06; SPH[o + 1] = gauss() * 0.06; SPH[o + 2] = gauss() * 0.06; }
+  else { const d = unit(), r = Math.sqrt(Math.random()) * 0.9; SPH[o] = d[0] * r; SPH[o + 1] = d[1] * r; SPH[o + 2] = d[2] * r; }
+
+  F_CURVE[i] = Math.floor(Math.random() * NC); F_U[i] = Math.random();
+  spray[i] = Math.random() < 0.06 ? 1 : 0;        // a few sparkles just off the rings
+  const j = spray[i] ? 0.05 : 0.003;
+  F_JIT[o] = gauss() * j; F_JIT[o + 1] = gauss() * j; F_JIT[o + 2] = gauss() * j;
+
+  DELAY[i] = Math.random();
+  BRI[i] = Math.random() < 0.04 ? 1.8 : 0.55 + Math.random() * 0.45;
+  COL[i] = pick([0.45, 0.25, 0.15, 0.15]);
+  for (let a = 0; a < 3; a++) { WOB_F[o + a] = 0.3 + Math.random() * 0.9; WOB_P[o + a] = Math.random() * Math.PI * 2; }
+}
+
+// Plexus links: nearest neighbours in the nebula core and on the globe, rays end to end,
+// and consecutive points along each filament (those may be longer and glow brighter).
+const pairA = [], pairB = [], pairFil = [];
+function knn(indices, pos, k) {
+  const m = indices.length;
+  for (let p = 0; p < m; p++) {
+    const i = indices[p], ix = pos[i * 3], iy = pos[i * 3 + 1], iz = pos[i * 3 + 2];
+    const best = new Array(k).fill(Infinity), bestJ = new Array(k).fill(-1);
+    for (let q = 0; q < m; q++) {
+      if (q === p) continue;
+      const j = indices[q], dx = pos[j * 3] - ix, dy = pos[j * 3 + 1] - iy, dz = pos[j * 3 + 2] - iz;
+      const d = dx * dx + dy * dy + dz * dz;
+      if (d < best[k - 1]) {
+        let t = k - 1;
+        while (t > 0 && best[t - 1] > d) { best[t] = best[t - 1]; bestJ[t] = bestJ[t - 1]; t--; }
+        best[t] = d; bestJ[t] = j;
+      }
+    }
+    for (const j of bestJ) if (j >= 0 && i < j) { pairA.push(i); pairB.push(j); pairFil.push(0); }
+  }
+}
+const idx = (pred) => { const out = []; for (let i = 0; i < N; i++) if (pred(i)) out.push(i); return out; };
+knn(idx(i => cloudKind[i] !== 2), CLOUD, 2);
+knn(idx(i => sphKind[i] !== 1), SPH, 3);
+for (let r = 0; r < sphRays.length; r++) {
+  const m = idx(i => sphKind[i] === 1 && sphRay[i] === r)
+    .sort((a, b) => Math.hypot(SPH[a * 3], SPH[a * 3 + 1], SPH[a * 3 + 2]) - Math.hypot(SPH[b * 3], SPH[b * 3 + 1], SPH[b * 3 + 2]));
+  for (let t = 1; t < m.length; t++) { pairA.push(m[t - 1]); pairB.push(m[t]); pairFil.push(0); }
+}
+for (let c = 0; c < NC; c++) {
+  const m = idx(i => F_CURVE[i] === c && !spray[i]).sort((a, b) => F_U[a] - F_U[b]);
+  for (let t = 1; t < m.length; t++) { pairA.push(m[t - 1]); pairB.push(m[t]); pairFil.push(1); }
+  if (m.length > 2) { pairA.push(m[m.length - 1]); pairB.push(m[0]); pairFil.push(1); }   // join the ends
+}
+const PA = Int32Array.from(pairA), PB = Int32Array.from(pairB), PF = Uint8Array.from(pairFil);
+
+// Animation state, eased toward targets every frame.
+const TARGET = { idle: [1, 0, 0], listening: [1, 0, 0], thinking: [0, 1, 0], speaking: [0, 0, 1] };
+const anim = { w: [1, 0, 0], amp: 0, rot: 0, flow: 0, t: 0 };
+let shape = "idle";
+let speechLevel = () => 0;           // replaced while Jarvis speaks
+let musicLevel = () => 0;            // replaced while music plays
+
+const sx = new Float32Array(N), sy = new Float32Array(N), sd = new Float32Array(N);
+let W = 0, H = 0, DPR = 1;
+function resize() {
+  DPR = 1;            // the ball is a soft glow: full Retina sharpness costs 4x the work for no visible gain
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = Math.round(W * DPR); canvas.height = Math.round(H * DPR);
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+window.addEventListener("resize", resize);
+resize();
+
+const smooth = (x) => { x = x < 0 ? 0 : x > 1 ? 1 : x; return x * x * (3 - 2 * x); };
+
+// If frames take too long (a slower Mac, several tabs), draw every other frame (30 a second).
+let animating = true, slowFrames = 0, skip = false;
+
+function frame(now) {
+  if (!animating) return;                           // this tab was replaced by another Jarvis tab
+  const gap = now - (frame.last || now);
+  slowFrames = gap > 24 ? Math.min(slowFrames + 1, 120) : Math.max(slowFrames - 1, 0);
+  skip = slowFrames > 30 ? !skip : false;
+  if (skip) { requestAnimationFrame(frame); return; }
+  const dt = Math.min(0.05, gap / 1000); frame.last = now;
+  anim.t += dt;
+  const t = anim.t, target = TARGET[shape], kw = 1 - Math.exp(-dt / 0.45);
+  for (let k = 0; k < 3; k++) anim.w[k] += (target[k] - anim.w[k]) * kw;
+  anim.amp += (Math.min(1, Math.max(speechLevel(), musicLevel())) - anim.amp) * Math.min(1, dt * 9);
+  const [w0, w1, w2] = anim.w, amp = anim.amp, slow = reduceMotion ? 0.3 : 1;
+  anim.rot += (0.15 + 0.9 * w1 + 0.35 * w2 + 0.5 * amp) * dt * slow;
+  anim.flow += (0.05 + 0.12 * w2 + 0.35 * amp) * dt * slow;
+
+  const R = Math.min(W, H) * 0.3, cx = W / 2, cy = H * 0.45;
+  const a = anim.rot, b = 0.35 + 0.1 * Math.sin(t * 0.4);
+  const ca = Math.cos(a), sa = Math.sin(a), cb = Math.cos(b), sb = Math.sin(b);
+  const sphPulse = 1 + 0.04 * Math.sin(t * 3), filScale = 1 + 0.08 * amp, jitScale = 1 + amp;
+  // each ring slowly turns about the vertical axis, so the orbits keep changing
+  const ringU = [], ringV = [];
+  for (let c = 0; c < NC; c++) {
+    const g = RING_DRIFT[c] * t * 0.3, cg = Math.cos(g), sg = Math.sin(g);
+    const turn = (q) => [q[0] * cg + q[2] * sg, q[1], -q[0] * sg + q[2] * cg];
+    ringU.push(turn(RING_U[c])); ringV.push(turn(RING_V[c]));
+  }
+  const TWO_PI = Math.PI * 2;
+
+  for (let i = 0; i < N; i++) {
+    const o = i * 3;
+    // staggered morph so each change ripples through the swarm
+    let e0 = smooth(w0 * 1.5 - DELAY[i] * 0.5), e1 = smooth(w1 * 1.5 - DELAY[i] * 0.5), e2 = smooth(w2 * 1.5 - DELAY[i] * 0.5);
+    const es = e0 + e1 + e2 || 1; e0 /= es; e1 /= es; e2 /= es;
+    let x = 0, y = 0, z = 0;
+    if (e0 > 0) {
+      x += e0 * (CLOUD[o] + 0.05 * Math.sin(WOB_F[o] * t + WOB_P[o]));
+      y += e0 * (CLOUD[o + 1] + 0.05 * Math.sin(WOB_F[o + 1] * t + WOB_P[o + 1]));
+      z += e0 * (CLOUD[o + 2] + 0.05 * Math.sin(WOB_F[o + 2] * t + WOB_P[o + 2]));
+    }
+    if (e1 > 0) { x += e1 * SPH[o] * sphPulse; y += e1 * SPH[o + 1] * sphPulse; z += e1 * SPH[o + 2] * sphPulse; }
+    if (e2 > 0) {
+      const c = F_CURVE[i], U = ringU[c], V = ringV[c];
+      const phi = TWO_PI * (F_U[i] + RING_SPEED[c] * anim.flow);
+      // a smooth wave travels round each ring and grows with the voice
+      const r = RING_R[c] * filScale * (1 + amp * 0.09 * Math.sin(3 * phi + 4 * t + RING_PH[c]));
+      const cs = Math.cos(phi) * r, sn = Math.sin(phi) * r;
+      x += e2 * (U[0] * cs + V[0] * sn + F_JIT[o] * jitScale);
+      y += e2 * (U[1] * cs + V[1] * sn + F_JIT[o + 1] * jitScale);
+      z += e2 * (U[2] * cs + V[2] * sn + F_JIT[o + 2] * jitScale);
+    }
+    // rotate about y, tilt about x, mild perspective
+    const rx = x * ca + z * sa, rz = -x * sa + z * ca;
+    const ry = y * cb - rz * sb, rz2 = y * sb + rz * cb;
+    const persp = 3 / (3 - rz2);
+    sx[i] = cx + rx * R * persp; sy[i] = cy + ry * R * persp;
+    sd[i] = Math.max(0, Math.min(1, (rz2 + 1.5) / 3));
+  }
+
+  ctx.clearRect(0, 0, W, H);
+  ctx.globalCompositeOperation = "lighter";
+
+  // soft halo and the bright core
+  const halo = ctx.createRadialGradient(cx, cy, 0, cx, cy, R * 1.6);
+  halo.addColorStop(0, `rgba(30,110,160,${0.10 + 0.12 * amp})`);
+  halo.addColorStop(1, "rgba(30,110,160,0)");
+  ctx.fillStyle = halo; ctx.fillRect(cx - R * 1.6, cy - R * 1.6, R * 3.2, R * 3.2);
+  const coreK = (0.25 * w0 + 0.9 * w1 + 0.15 * w2) * (0.85 + 0.15 * Math.sin(t * 6));
+  const core = ctx.createRadialGradient(cx, cy, 0, cx, cy, R * 0.22);
+  core.addColorStop(0, `rgba(210,245,255,${0.9 * coreK})`);
+  core.addColorStop(0.15, `rgba(120,215,255,${0.45 * coreK})`);
+  core.addColorStop(1, "rgba(30,110,160,0)");
+  ctx.fillStyle = core; ctx.fillRect(cx - R * 0.22, cy - R * 0.22, R * 0.44, R * 0.44);
+
+  // plexus lines, batched into four brightness levels
+  const maxL = 46 * R / 330, maxF = 80 * R / 330, filGain = w2 * w2 * (1.15 + 0.6 * amp);
+  const levels = [[], [], [], []];
+  for (let p = 0; p < PA.length; p++) {
+    const i = PA[p], j = PB[p], dx = sx[i] - sx[j], dy = sy[i] - sy[j];
+    const L = Math.sqrt(dx * dx + dy * dy), lim = PF[p] ? maxF : maxL;
+    if (L >= lim) continue;
+    const g = PF[p] ? filGain : 0.55;
+    if (!g) continue;
+    const v = Math.pow(1 - L / lim, 1.2) * Math.min(sd[i], sd[j]) * g;
+    const lvl = Math.min(3, Math.floor(v * 5) - 1);
+    if (lvl >= 0) levels[lvl].push(i, j);
+  }
+  ctx.lineWidth = 0.8;
+  for (let q = 0; q < 4; q++) {
+    const L = levels[q]; if (!L.length) continue;
+    ctx.strokeStyle = `rgba(70,170,225,${0.18 + q * 0.16})`;
+    ctx.beginPath();
+    for (let k = 0; k < L.length; k += 2) { ctx.moveTo(sx[L[k]], sy[L[k]]); ctx.lineTo(sx[L[k + 1]], sy[L[k + 1]]); }
+    ctx.stroke();
+  }
+
+  // particles, batched by colour and brightness
+  const buckets = Array.from({ length: 4 * 5 }, () => []);
+  for (let i = 0; i < N; i++) {
+    const v = BRI[i] * (0.35 + 0.75 * sd[i]) * (1 + 0.5 * amp);
+    const lvl = Math.min(4, Math.floor(v * 3));
+    buckets[COL[i] * 5 + lvl].push(i);
+  }
+  for (let c = 0; c < 4; c++) {
+    for (let l = 0; l < 5; l++) {
+      const B = buckets[c * 5 + l]; if (!B.length) continue;
+      ctx.fillStyle = `rgba(${COLORS[c]},${0.25 + l * 0.18})`;
+      ctx.beginPath();
+      const s = 1.2 + l * 0.25;
+      for (const i of B) ctx.rect(sx[i] - s / 2, sy[i] - s / 2, s, s);
+      ctx.fill();
+    }
+  }
+  ctx.globalCompositeOperation = "source-over";
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+/* ===================== Voice assistant ===================== */
+
+const el = (id) => document.getElementById(id);
+const ui = {
+  status: el("status"), msg: el("msg"), query: el("query"), type: el("type"),
+  start: el("start"), startBtn: el("startBtn"), conn: el("conn"), connText: el("connText"),
+};
+const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+let running = false, rec = null, audioCtx = null, busy = false, dots = 0, musicPlaying = false, music = null;
+
+function setState(next, label) {
+  shape = next;
+  ui.status.dataset.label = label ?? (next === "idle" ? "" : next);
+}
+setInterval(() => {                              // animated "listening..." dots
+  dots = (dots + 1) % 3;
+  const label = ui.status.dataset.label || "";
+  ui.status.textContent = label && /ing$/.test(label) ? label + ".".repeat(dots + 1) : label;
+}, 450);
+
+function showMsg(text) { ui.msg.textContent = text || ""; ui.msg.hidden = !text; }
+function showQuery(text) { ui.query.textContent = text || ""; ui.query.hidden = !text; }
+
+async function checkServer() {
+  try {
+    const r = await fetch("/api/status", { signal: AbortSignal.timeout(15000) });
+    const s = await r.json();
+    ui.conn.className = "conn on"; ui.connText.textContent = s.voice ? `online · ${s.voice === "fish" ? "fish audio" : "ryan"}` : "online"
+    if (s.version) ui.connText.textContent += ` · ${s.version}`;
+    return s;
+  } catch {
+    ui.conn.className = "conn off"; ui.connText.textContent = "offline";
+    showMsg("Jarvis's helper isn't running. Double-click \"Start Jarvis\" in the voice_assistant folder.");
+    return null;
+  }
+}
+
+/* ---- speaking ---- */
+
+// Sound plays through ordinary <audio> players, not the Web Audio engine: on some Macs
+// the engine's output goes silent while the microphone is in use. The engine is only
+// used to measure loudness, so the ball can move with the sound.
+async function loudnessOf(arrayBuffer) {           // loudness every ~23 ms, as a function of time
+  const audio = await audioCtx.decodeAudioData(arrayBuffer);
+  const data = audio.getChannelData(0), block = 1024, levels = new Float32Array(Math.ceil(data.length / block));
+  for (let b = 0; b < levels.length; b++) {
+    let sum = 0; const end = Math.min(data.length, (b + 1) * block);
+    for (let i = b * block; i < end; i++) sum += data[i] * data[i];
+    levels[b] = Math.sqrt(sum / block);
+  }
+  return (t) => levels[Math.min(levels.length - 1, Math.max(0, Math.floor(t * audio.sampleRate / block)))] || 0;
+}
+
+async function playWav(buf) {
+  let level = () => 0;
+  try { level = await loudnessOf(buf.slice(0)); } catch { /* the ball just won't pulse */ }
+  const isWav = new TextDecoder().decode(new Uint8Array(buf, 0, 4)) === "RIFF";   // Ryan: WAV, Fish Audio: MP3
+  const url = URL.createObjectURL(new Blob([buf], { type: isWav ? "audio/wav" : "audio/mpeg" }));
+  const el = new Audio(url);
+  speechLevel = () => level(el.currentTime) * 3.2;
+  try {
+    await new Promise((done, fail) => {
+      el.onended = done; el.onerror = fail; el.play().catch(fail);
+      // if the browser never says it finished, carry on anyway
+      el.onloadedmetadata = () => setTimeout(done, (el.duration || 60) * 1000 + 3000);
+      setTimeout(done, 180000);
+    });
+  } finally {
+    speechLevel = () => 0;
+    URL.revokeObjectURL(url);
+  }
+}
+
+function browserVoice() {
+  const voices = speechSynthesis.getVoices().filter(v => /^en/i.test(v.lang));
+  const male = /daniel|alex|aaron|arthur|fred|evan|nathan|tom|oliver|guy|ryan|male|david|james|google uk english male/i;
+  return voices.find(v => male.test(v.name)) || voices[0] || null;
+}
+
+function speakWithBrowser(text) {
+  return new Promise((done) => {
+    const u = new SpeechSynthesisUtterance(text);
+    const v = browserVoice(); if (v) u.voice = v;
+    u.rate = 1.02;
+    let talking = true;
+    speechLevel = () => talking ? 0.25 + Math.random() * 0.35 : 0;
+    let finished = false;
+    const finish = () => { if (finished) return; finished = true; talking = false; speechLevel = () => 0; done(); };
+    u.onend = u.onerror = finish;
+    setTimeout(finish, (text.split(/\s+/).length / 2.2 + 4) * 1000);   // Chrome sometimes never says it ended
+    speechSynthesis.speak(u);
+  });
+}
+
+function fetchSpeech(text) {                     // Ryan's voice as WAV bytes, or null
+  return fetch("/api/speak", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }),
+                               signal: AbortSignal.timeout(60000) })
+    .then((r) => (r.status === 200 ? r.arrayBuffer() : null))
+    .catch(() => null);
+}
+
+async function say(text, opts = {}) {
+  setState(opts.shape || "speaking", opts.label);
+  try {
+    const buf = await (opts.audio || fetchSpeech(text));
+    if (buf) return await playWav(buf);
+  } catch { /* fall through to the browser's voice */ }
+  await speakWithBrowser(text);
+}
+
+/* ---- thinking ---- */
+
+/* ---- custom command: "jarvis music" plays music.mp3 ---- */
+
+const MUSIC_COMMAND = /^\s*(hey\s+)?jarvis[\s,.!]*music[\s.!]*$/i;
+
+let musicStarting = false;
+
+let musicLoudness = null;                          // worked out once, in the background
+
+function fadeMusic(target, ms = 300) {             // smoothly change the music's volume
+  if (!music) return;
+  const el = music.el, from = el.volume, t0 = performance.now();
+  clearInterval(music.fade);
+  music.fade = setInterval(() => {
+    const k = Math.min(1, (performance.now() - t0) / ms);
+    el.volume = from + (target - from) * k;
+    if (k === 1) clearInterval(music && music.fade);
+  }, 20);
+}
+
+async function startMusic() {                     // true once the song is playing
+  if (musicPlaying || musicStarting) return musicPlaying;
+  musicStarting = true;
+  const el = new Audio("/music.mp3");
+  try {
+    await el.play();
+  } catch (e) {
+    musicStarting = false;
+    if (e.name === "NotSupportedError") showMsg("No song found. Put an MP3 named music.mp3 in the voice_assistant folder.");
+    return false;
+  }
+  musicStarting = false;
+  music = { el, fade: null }; musicPlaying = true;
+  if (!musicLoudness) {
+    musicLoudness = fetch("/music.mp3").then((r) => r.arrayBuffer()).then(loudnessOf).catch(() => () => 0.15);
+  }
+  let level = () => 0.15 + 0.1 * Math.sin(performance.now() / 180);   // until the real loudness is ready
+  musicLoudness.then((f) => { level = f; });
+  musicLevel = () => level(el.currentTime) * 2.5 * el.volume;          // the ball dances to the music
+  el.onended = () => stopMusic();
+  return true;
+}
+
+async function playMusic() {
+  if (busy) return;                                // let Jarvis finish talking first
+  stopListening();
+  showMsg("");
+  if (await startMusic()) setState("speaking", "playing music");
+  else listen();
+}
+
+function stopMusic({ fade = false } = {}) {
+  if (music) {
+    const { el } = music;
+    el.onended = null;
+    if (fade) {
+      fadeMusic(0, 500);
+      setTimeout(() => el.pause(), 550);
+    } else {
+      clearInterval(music.fade);
+      el.pause();
+    }
+    music = null;
+  }
+  musicPlaying = false;
+  musicLevel = () => 0;
+  listen();
+}
+
+function toggleMusic() {
+  if (musicStarting || demoRunning) return;       // still starting, or the demo is in charge
+  musicPlaying ? stopMusic() : playMusic();
+}
+
+async function sayThenListen(text) {
+  if (busy) return;
+  busy = true; stopListening(); showMsg("");
+  await say(text);
+  busy = false; listen();
+}
+
+/* ---- news and NFL: "jarvis what's the news", "what's going on with my NFL team" ---- */
+
+const NEWS_COMMAND = /^\s*(?:hey[\s,.!]+)?(?:jarvis[\s,.!]*)?(?:what(?:'s|s| is)\s+(?:the|in the|on the)\s+news|(?:give me|tell me)\s+the\s+(?:news|headlines)|(?:the\s+)?(?:news|headlines))(?:\s+today)?[\s.!?]*$/i;
+const NFL_COMMAND = /^\s*(?:hey[\s,.!]+)?(?:jarvis[\s,.!]*)?(?:what(?:'s|s| is)\s+(?:going on|happening|new)\s+with\s+(?:my\s+(?:nfl\s+|football\s+)?team|the\s+bengals|my\s+bengals)|how\s+(?:are|is)\s+(?:the\s+bengals|my\s+(?:nfl\s+|football\s+)?team)\s+doing|bengals\s+news|(?:give me\s+)?(?:an?\s+)?(?:nfl|bengals)\s+update)[\s.!?]*$/i;
+
+/* ---- the Earth: "hey jarvis pull up earth / close earth / show me <place> / zoom in" ---- */
+
+const HEY = String.raw`^\s*hey[\s,.!]+jarvis[\s,.!]*`;
+const EARTH_OPEN = new RegExp(HEY + String.raw`(?:(?:pull|bring|put|show)\s+up|open|show(?:\s+me)?)\s+(?:the\s+)?(?:earth|globe|world|map)[\s.!?]*$`, "i");
+const EARTH_CLOSE = new RegExp(HEY + String.raw`(?:close|hide|exit|put away)\s+(?:the\s+)?(?:earth|globe|world|map)[\s.!?]*$`, "i");
+const EARTH_HOME = new RegExp(HEY + String.raw`(?:(?:show\s+(?:me\s+)?)?(?:the\s+)?whole\s+(?:earth|world|globe)|zoom\s+(?:all\s+the\s+way\s+out|out\s+all\s+the\s+way))[\s.!?]*$`, "i");
+const EARTH_ZOOM = new RegExp(HEY + String.raw`zoom\s+(in|out)(?:\s+(?:more|a\s+bit|a\s+little))?[\s.!?]*$`, "i");
+const EARTH_GO = new RegExp(HEY + String.raw`(?:show\s+me|take\s+me\s+to|go\s+to|fly\s+(?:me\s+)?to|zoom\s+(?:in\s+)?(?:on|to|into)|where\s+is|where's)\s+(.+?)[\s.!?]*$`, "i");
+
+/* ---- web search and phone calls: "hey jarvis search for ..." / "hey jarvis call ..." ---- */
+
+const SEARCH_COMMAND = new RegExp(HEY + String.raw`(?:search\s+(?:the\s+web\s+|online\s+|google\s+)?(?:for\s+)?|google\s+|look\s+up\s+|find\s+(?:out\s+)?)(.+?)[\s.!?]*$`, "i");
+const CALL_COMMAND = new RegExp(HEY + String.raw`(?:call|phone|ring|dial|facetime)\s+(.+?)[\s.!?]*$`, "i");
+
+/* ---- space: "hey jarvis open space / close space" shows Solar System Scope full screen ---- */
+// It's another website, so Jarvis can open and close it but not steer it: zoom to planets
+// inside it with the mouse.
+
+const SPACE_URL = "https://www.solarsystemscope.com/iframe";
+const SPACE_OPEN = new RegExp(HEY + String.raw`(?:(?:pull|bring|put|show)\s+up|open|show(?:\s+me)?|go\s+to)\s+(?:outer\s+)?(?:space|the\s+solar\s+system|the\s+planets)[\s.!?]*$`, "i");
+const SPACE_CLOSE = new RegExp(HEY + String.raw`(?:close|hide|exit|leave)\s+(?:outer\s+)?(?:space|the\s+solar\s+system|the\s+planets)[\s.!?]*$`, "i");
+const spaceFrame = document.getElementById("space");
+let spaceOpen = false;
+
+function showSpace(show) {
+  if (show && !spaceFrame.getAttribute("src")) spaceFrame.src = SPACE_URL;
+  spaceFrame.hidden = !show;
+  spaceOpen = show;
+  document.body.classList.toggle("earth-open", show || earthOpen);
+}
+
+/* ---- finance: "how's the stock market", "what's Apple stock at", "what's Goldman saying" ---- */
+
+const OPT_JARVIS = String.raw`^\s*(?:hey[\s,.!]+)?(?:jarvis[\s,.!]*)?`;
+const MARKET_COMMAND = new RegExp(OPT_JARVIS + String.raw`(?:how(?:'s|s| is| are)\s+(?:the\s+)?(?:stock\s+)?markets?(?:\s+doing)?(?:\s+today)?|(?:give me\s+)?(?:a\s+)?(?:stock\s+)?market\s+(?:update|report)|what(?:'s|s| is)\s+the\s+(?:stock\s+)?market\s+doing)[\s.!?]*$`, "i");
+const STOCK_COMMAND = new RegExp(OPT_JARVIS + String.raw`(?:what(?:'s|s| is)\s+(?:the\s+)?(?:stock\s+|share\s+|current\s+)?price\s+(?:of|for)\s+(.+?)|what(?:'s|s| is)\s+(.+?)\s+(?:stock|shares?)\s+(?:at|trading at|price|worth)|how(?:'s|s| is)\s+(.+?)\s+stock\s+doing|how much is\s+(.+?)\s+(?:stock|worth)|(.+?)\s+stock\s+price)[\s.!?]*$`, "i");
+const INSIGHTS_COMMAND = new RegExp(OPT_JARVIS + String.raw`(?:what(?:'s|s| is| are)\s+goldman(?:\s+sachs)?\s+saying(?:\s+about\s+(?:the\s+)?markets?)?|(?:goldman(?:\s+sachs)?\s+)?market\s+(?:insights|research)|goldman(?:\s+sachs)?\s+insights)[\s.!?]*$`, "i");
+
+const earthFrame = document.getElementById("earth");
+let earthOpen = false;
+
+function openEarth() {
+  if (spaceOpen) showSpace(false);
+  if (!earthFrame.getAttribute("src")) earthFrame.src = "/earth.html";   // loaded once, then kept
+  earthFrame.hidden = false;
+  document.body.classList.add("earth-open");
+  earthOpen = true;
+}
+
+function closeEarth() {
+  earthFrame.hidden = true;
+  earthOpen = false;
+  document.body.classList.toggle("earth-open", spaceOpen);
+}
+
+async function earthApi() {                         // the Earth page's controls, once it has loaded
+  for (let i = 0; i < 100; i++) {
+    const api = earthFrame.contentWindow && earthFrame.contentWindow.jarvisEarth;
+    if (api) return api;
+    await sleep(200);
+  }
+  throw new Error("Earth didn't load");
+}
+
+async function earthCommand(action, arg) {
+  if (busy) return;
+  busy = true; stopListening(); showMsg("");
+  setState("thinking");
+  let message;
+  try {
+    if (action === "open") {
+      openEarth(); await earthApi();
+      message = "Here is the Earth.";
+    } else if (action === "close") {
+      message = earthOpen ? "Closing the Earth." : "The Earth isn't open.";
+      closeEarth();
+    } else if (action === "go") {
+      openEarth();
+      const found = await (await earthApi()).search(arg);
+      message = found.ok ? `Here's ${found.name}.`
+        : found.offline ? "I can't search places right now. Check your internet connection."
+        : `I couldn't find ${arg}.`;
+    } else if (!earthOpen) {
+      message = "The Earth isn't open. Say, hey Jarvis, pull up Earth.";
+    } else if (action === "home") {
+      (await earthApi()).home(); message = "Here's the whole Earth.";
+    } else {
+      (await earthApi()).zoom(arg); message = arg === "in" ? "Zooming in." : "Zooming out.";
+    }
+  } catch {
+    message = "The Earth view didn't load. Check your internet connection.";
+  }
+  await say(message);
+  busy = false; listen();
+}
+
+/* ---- custom command: "hey jarvis, open <app>" (needs the "hey jarvis" in front) ---- */
+
+// Speech recognition sometimes hears "Jarvis" as "Travis" or "Jervis".
+const OPEN_COMMAND = /^\s*hey[\s,.!]+(?:jarvis|travis|jervis|jarvi)[\s,.!]*open\s+(.+?)[\s.!?]*$/i;
+
+// Ask the helper to do something on this computer, then say what it answers.
+async function runHelper(path, body, opts = {}) {
+  if (busy) return;
+  busy = true;
+  if (opts.stopMusic && musicPlaying) stopMusic();   // e.g. opening an app ends the music
+  stopListening();
+  showMsg("");
+  setState("thinking");
+  let message;
+  try {
+    const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+                                  signal: AbortSignal.timeout(60000) });
+    message = (await r.json()).say || "Something went wrong.";
+  } catch {
+    message = "I can't reach my helper right now.";
+  }
+  await say(message);
+  busy = false;
+  listen();
+}
+
+/* ---- custom commands: "what's the weather" and "good morning" (Greencastle, PA) ---- */
+
+const WEATHER_COMMAND = /^\s*(?:hey[\s,.!]+)?(?:jarvis[\s,.!]*)?(?:what(?:'s|s| is)|how(?:'s|s| is)) the weather(?: like)?(?: today| outside| right now| now)?[\s.!?]*$/i;
+const MORNING_COMMAND = /^\s*(?:hey[\s,.!]+)?(?:jarvis[\s,.!]*)?(?:good[\s,]+)?morning(?:[\s,.!]+jarvis)?[\s.!?]*$/i;
+
+/* ---- custom command: "jarvis demo" recites the showcase and plays music.mp3 ---- */
+
+const DEMO_COMMAND = /^\s*(hey\s+)?jarvis[\s,.!]*demo[\s.!]*$/i;
+let demoRunning = false;
+
+// shape: "speaking" = flowing strands, "thinking" = globe, "listening" = cloud.
+// then: what happens after the line ("music-on" / "music-off").
+const DEMO = [
+  { text: "Good evening. I am Jarvis, your personal artificial intelligence assistant." },
+  { shape: "thinking", text: "All systems are online. Voice interface activated. Audio systems operational. I am ready to assist you." },
+  { text: "My voice is designed for natural conversation, delivering responses with clarity, precision, and a touch of sophistication. Whether you need information, assistance with a task, or simply someone to talk to, I am always ready to respond." },
+  { text: "But intelligence is only part of the experience." },
+  { text: "I can also control your music. With a simple voice command, I can begin playback, pause a track, skip to the next song, or adjust the volume to your preference." },
+  { text: "Allow me to demonstrate." },
+  { shape: "thinking", text: "Initiating music playback now.", then: "music-on" },
+  { text: "Enjoy the sound. I can keep the music running in the background while remaining ready to respond to your next command." },
+  { text: "Need something more energetic? I can switch the mood. Something cinematic? Consider it done. A calm atmosphere for concentration? I can arrange that as well." },
+  { text: "And when you need silence, I can pause the music instantly.", then: "music-off" },
+  { text: "No complicated menus. No unnecessary steps. Just your voice, and my response." },
+  { text: "From natural voice interaction to seamless music control, I am designed to make your everyday experience more intuitive, more efficient, and considerably more interesting." },
+  { shape: "listening", text: "Systems standing by." },
+  { text: "I am Jarvis. At your service." },
+];
+const DEMO_MUSIC_SOLO = 5500;                     // ms the song plays on its own before Jarvis talks over it
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function runDemo() {
+  if (busy) return;
+  busy = true; demoRunning = true;
+  stopListening();
+  showMsg("");
+  if (musicPlaying) stopMusic();
+  let next = fetchSpeech(DEMO[0].text);
+  for (let i = 0; i < DEMO.length && running; i++) {
+    const line = DEMO[i], audio = next;
+    next = i + 1 < DEMO.length ? fetchSpeech(DEMO[i + 1].text) : null;   // prepare the next line meanwhile
+    if (musicPlaying) fadeMusic(0.35, 250);           // quieter under the voice
+    await say(line.text, { audio, shape: line.shape, label: "speaking" });
+    if (musicPlaying) fadeMusic(1, 600);
+    if (line.then === "music-on") {
+      if (await startMusic()) { setState("speaking", "playing music"); await sleep(DEMO_MUSIC_SOLO); }
+    } else if (line.then === "music-off") {
+      if (musicPlaying) stopMusic({ fade: true });
+      await sleep(700);
+    } else {
+      await sleep(450);
+    }
+  }
+  if (musicPlaying) stopMusic({ fade: true });
+  demoRunning = false; busy = false;
+  listen();
+}
+
+// Words speech recognition often hears instead of "Jarvis" and "hey". Only used to
+// spot commands: normal chat goes to the AI exactly as it was heard.
+function forCommands(text) {
+  return text
+    .replace(/\b(?:travis|jervis|jarvi|jarvas|charvis|jarvis's|java's|java)\b/gi, "jarvis")
+    .replace(/^\s*(?:hi|hay|a|okay|ok|hey hey)[\s,.!]+(?=jarvis\b)/i, "hey ");
+}
+
+// The command in what was said, as a function to run, or null for normal chat.
+function matchCommand(text) {
+  const t = forCommands(text);
+  if (SPACE_OPEN.test(t)) return () => {
+    if (earthOpen) closeEarth();
+    showSpace(true);
+    sayThenListen("Here is the solar system. Click a planet to zoom in on it.");
+  };
+  if (SPACE_CLOSE.test(t)) return () => {
+    const was = spaceOpen; showSpace(false);
+    sayThenListen(was ? "Closing space." : "Space isn't open.");
+  };
+  if (MARKET_COMMAND.test(t)) return () => runHelper("/api/market", {});
+  if (INSIGHTS_COMMAND.test(t)) return () => runHelper("/api/insights", {});
+  const stock = t.match(STOCK_COMMAND);
+  if (stock) return () => runHelper("/api/stock", { name: stock.slice(1).find(Boolean) });
+  if (EARTH_OPEN.test(t)) return () => earthCommand("open");
+  if (EARTH_CLOSE.test(t)) return () => earthCommand("close");
+  if (EARTH_HOME.test(t)) return () => earthCommand("home");
+  const zoom = t.match(EARTH_ZOOM);
+  if (zoom) return () => earthCommand("zoom", zoom[1].toLowerCase());
+  const go = t.match(EARTH_GO);
+  if (go) {                                         // "show me the weather" is not a place
+    const what = go[1].replace(/^(?:the|my)\s+/i, "").toLowerCase();
+    if (what === "weather") return () => runHelper("/api/weather", { kind: "now" });
+    if (what === "news" || what === "headlines") return () => runHelper("/api/news", {});
+    if (!["music", "demo", "time"].includes(what)) return () => earthCommand("go", go[1]);
+  }
+  const call = t.match(CALL_COMMAND);
+  if (call) return () => runHelper("/api/call", { who: call[1] }, { stopMusic: true });
+  const search = t.match(SEARCH_COMMAND);
+  if (search) return () => runHelper("/api/search", { query: search[1] });
+  if (NEWS_COMMAND.test(t)) return () => runHelper("/api/news", {});
+  if (NFL_COMMAND.test(t)) return () => runHelper("/api/nfl", {});
+  const open = t.match(OPEN_COMMAND);
+  if (open) return () => runHelper("/api/open", { name: open[1] }, { stopMusic: true });
+  if (WEATHER_COMMAND.test(t)) return () => runHelper("/api/weather", { kind: "now" });
+  if (MORNING_COMMAND.test(t)) return () => runHelper("/api/weather", { kind: "morning" });
+  if (DEMO_COMMAND.test(t)) return runDemo;
+  if (MUSIC_COMMAND.test(t)) return toggleMusic;
+  return null;
+}
+
+async function handle(text) {
+  const command = matchCommand(text);
+  if (command) { showQuery(text.trim()); command(); return; }
+  if (musicPlaying) stopMusic();
+  if (busy || !text.trim()) return;
+  busy = true;
+  stopListening();
+  showQuery(text); showMsg("");
+  setState("thinking");
+  let reply = null, goodbye = false;
+  try {
+    const r = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }),
+                                         signal: AbortSignal.timeout(120000) });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || "The AI didn't answer.");
+    reply = data.reply; goodbye = data.goodbye;
+  } catch (e) {
+    showMsg(friendlyError(e.message));
+    reply = "Sorry, something went wrong. Please try again.";
+  }
+  await say(reply);
+  busy = false;
+  if (goodbye) { stop(); return; }
+  listen();
+}
+
+function friendlyError(text) {
+  if (/No AI available/i.test(text)) return "No AI found. Install the free Ollama app from ollama.com and open it, then restart Jarvis (it downloads its AI model by itself).";
+  if (/1010/.test(text)) return "Groq is blocking your internet connection. Install the free Ollama app from ollama.com and open it, then restart Jarvis.";
+  if (/401|invalid api key/i.test(text)) return "Your AI key was rejected. Check the key in keys.txt, save, then restart Jarvis.";
+  if (/429/.test(text)) return "The free AI limit was reached for now. Wait a minute and try again.";
+  if (/Failed to fetch|NetworkError/i.test(text)) return "Can't reach Jarvis's helper. Is the \"Start Jarvis\" window still open?";
+  if (/timed out|TimeoutError|aborted/i.test(text)) return "The AI took too long to answer. Is Ollama open? Try again.";
+  return text;
+}
+
+/* ---- listening ---- */
+
+let recActive = false;                             // is Chrome's speech listener running right now?
+
+function listen() {
+  if (!running || busy || musicPlaying) return;
+  if (shape !== "listening") showQuery("");       // answered: clear the last question
+  setState("listening");
+  if (!rec || recActive) return;                   // no speech recognition (typing only), or already on
+  try { rec.start(); } catch { /* still shutting down: the watchdog below retries */ }
+}
+
+// Chrome's listener sometimes stops without telling us or refuses to restart;
+// keep it running whenever Jarvis should be listening.
+setInterval(() => { if (running && !busy && !musicPlaying && rec && !recActive) listen(); }, 1500);
+function stopListening() { if (rec) { try { rec.abort(); } catch { /* not started */ } } }
+
+function setupRecognition() {
+  if (!Recognition) {
+    showMsg("This browser can't hear you. Open Jarvis in Google Chrome, or type below.");
+    return null;
+  }
+  const r = new Recognition();
+  r.lang = "en-US"; r.interimResults = true; r.continuous = false;
+  r.maxAlternatives = 5;                           // Chrome's other guesses at what was said
+  let finalText = "", guesses = [];
+  r.onstart = () => { finalText = ""; guesses = []; recActive = true; };
+  r.onresult = (e) => {
+    let interim = "";
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const res = e.results[i];
+      if (res.isFinal) {
+        guesses = Array.from(res, (alt) => finalText + alt.transcript);
+        finalText += res[0].transcript;
+      } else interim += res[0].transcript;
+    }
+    showQuery((finalText + interim).trim());
+  };
+  r.onerror = (e) => {
+    if (e.error === "not-allowed" || e.error === "service-not-allowed") {
+      showMsg("The microphone is blocked. Click the microphone icon in the address bar, choose Allow, then click Start again.");
+      stop();
+    } else if (e.error === "network") {
+      showMsg("Speech recognition needs the internet. Check your connection.");
+    } else if (e.error === "audio-capture") {
+      showMsg("No microphone found. Plug one in, or type below.");
+    }
+  };
+  r.onend = () => {
+    recActive = false;
+    // If one of Chrome's guesses is a command ("open clod" vs "open Claude"), use that one.
+    const said = (guesses.find(matchCommand) || finalText).trim();
+    finalText = ""; guesses = [];
+    if (said) handle(said);
+    else if (running && !busy) setTimeout(listen, 250);   // silence: keep listening
+  };
+  return r;
+}
+
+/* ---- start / stop ---- */
+
+// Two open Jarvis tabs fight over the microphone and both freeze, so starting
+// Jarvis in one tab stops it in any other.
+const tabs = "BroadcastChannel" in window ? new BroadcastChannel("jarvis") : null;
+if (tabs) tabs.onmessage = (e) => {
+  if (e.data === "started") {
+    // Another tab took over: stop completely so the two don't compete for the computer.
+    if (running) stop();
+    if (earthOpen) { closeEarth(); earthFrame.removeAttribute("src"); }
+    if (spaceOpen) { showSpace(false); spaceFrame.removeAttribute("src"); }
+    animating = false;
+    showMsg("Jarvis was opened in another tab. Close this one, or click Start Jarvis to use it here instead.");
+  }
+};
+
+async function start() {
+  if (tabs) tabs.postMessage("started");
+  if (!animating) { animating = true; frame.last = 0; requestAnimationFrame(frame); }
+  ui.start.hidden = true;
+  ui.type.hidden = false;
+  showMsg("");
+  audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+  await Promise.race([audioCtx.resume(), sleep(3000)]);
+  const status = await checkServer();
+  if (!status) { ui.start.hidden = false; return; }
+  if (status.ai_error) showMsg(friendlyError(status.ai_error));
+  rec = rec || setupRecognition();
+  running = true; busy = true;
+  await say("Hello, I'm Jarvis.");
+  busy = false;
+  listen();
+}
+
+let busyFor = 0;
+setInterval(() => {
+  busyFor = busy && !demoRunning ? busyFor + 5 : 0;
+  if (busyFor >= 150) {
+    busyFor = 0; busy = false;
+    showMsg("That took too long, so I stopped waiting. Try again.");
+    listen();
+  }
+}, 5000);
+
+function stop() {
+  if (musicPlaying) stopMusic();
+  running = false;
+  stopListening();
+  setState("idle", "");
+  ui.startBtn.textContent = "Start Jarvis";
+  ui.start.hidden = false;
+}
+
+ui.startBtn.addEventListener("click", start);
+ui.type.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && ui.type.value.trim()) {
+    const text = ui.type.value.trim(); ui.type.value = "";
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    audioCtx.resume();
+    if (!running) { running = true; ui.start.hidden = true; }
+    handle(text);
+  }
+});
+if (window.speechSynthesis) speechSynthesis.getVoices();   // warm up the voice list
+checkServer();
+
+window.jarvis = { handle, toggleMusic, state: () => shape, music: () => musicPlaying, demo: () => demoRunning };           // handy for testing
+</script>
+</body>
+</html>

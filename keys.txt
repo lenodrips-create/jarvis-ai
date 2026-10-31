@@ -1,0 +1,22 @@
+# Jarvis settings.
+
+# Talk with Jarvis: paste ONE AI key after its = sign, save, and restart Jarvis.
+
+
+# With no key, Jarvis only does his commands.
+#   Claude (paid, pay as you go):  https://console.anthropic.com  -> API Keys
+#   Groq (free plan):              https://console.groq.com/keys
+#   Gemini (free plan):            https://aistudio.google.com/apikey
+
+
+GROQ_API_KEY=
+GEMINI_API_KEY=
+
+# The AI model Ollama runs. llama3.2 is small and fast (about 2 GB).
+# Smarter but needs 16 GB of memory or more: qwen2.5:7b
+OLLAMA_MODEL=llama3.2
+
+# Jarvis's voice. For a British voice, change it to: en_GB-alan-medium
+PIPER_VOICE=en_US-ryan-high
+
+
